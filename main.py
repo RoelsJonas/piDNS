@@ -51,30 +51,36 @@ def main():
 
         #loop daar alle gecapturde packets
         for packet in results:
+            #check of het een binnenkomende DNS qeury is
             if packet[IP].dst == hostIP and packet[DNS].qr == 0:
                 print("generating response", packet[IP].src)
-                siteName = packet[DNS].qd.qname
+
+                #bouw een layer 3 packet met als bestemming het IP vanwaar de query komt
                 networkLayer = IP(dst=packet[IP].src)
-                transportLayer = UDP(dport=packet[UDP].sport, sport=53)
-                siteIP = getSiteIP(siteName)
-                applicationLayer = DNS(id=packet[DNS].id, aa=1, qr=1, rd=packet[DNS].rd, qdcount=packet[DNS].qdcount, qd=packet[DNS].qd, ancount=1, an=DNSRR(rrname=packet[DNS].qd.qname, type='A', ttl=1, rdata=siteIP))
+                #bouw een UDP packet met als destination port de port vanwaar de DNS query verzonden is
+                transportLayer = UDP(dport=packet[UDP].sport,sport=53)
 
+                #zoek het overeenkomstig IP met de domain name vanuit de query
+                siteIP = getSiteIP(packet[DNS.qd.qname])
+
+
+                #bouw een application layer packet
+                applicationLayer = DNS(id=packet[DNS].id, #het transaction id van de DNS query
+                                       aa=1, #zegt of het een authorative answer is of niet
+                                       qr=1, #zegt dat het een antwoord is en geen query
+                                       rd=packet[DNS].rd, #zegt of recursion desired is
+                                       qdcount=packet[DNS].qdcount, #aantal queries, zelfde als aantal queries die ontvangen zijn
+                                       qd=packet[DNS].qd, #de query
+                                       ancount=1, #het aantal antwoorden dat we versturen
+                                       an=DNSRR(rrname=packet[DNS].qd.qname, #de domain name waarvoor we antwoorden
+                                                type='A', #het type antwoord, A voor een standaard host name query
+                                                ttl=1, #time to live, hoe lang de client er mag van uit gaan dat het IP niet verandert
+                                                rdata=siteIP)) #het ip dat overeen komt met de host name
+
+                #bouw het volledige packet
                 DNSAnswer = networkLayer/transportLayer/applicationLayer
+                #verstuur het packet (level 3)
                 dnsResponse = sr1(DNSAnswer, timeout=1)
-
-
-
-            # als packet een dns request is kijk of overeenkomstig ip in geheugen zit
-
-                # als ip in geheugen zit kijk of recursie vereist is
-
-                    #geen recursie vereist ==> stuur gekend ip terug
-
-                    # wel recursie vereist ==> vergelijk met TLD server voor dat domein
-                    #stuur waarde van TLD terug en pas eventueel gekend ip aan
-
-                # ip niet in geheugen ==> zoek naar TLD server voor domein
-                # voeg waarde toe aan TLD server en return naar de client
 
         #stop de sniffer en update de results
         results = t.results
