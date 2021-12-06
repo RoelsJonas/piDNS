@@ -4,6 +4,17 @@ nameDirectory = []
 IPDirectory = []
 ROOTNAMESERVER = '198.41.0.4'
 
+def startup():
+    networkLayer = IP(dst=ROOTNAMESERVER)
+    transportLayer = UDP(dport=53, sport=56980)
+    startpacket = networkLayer/transportLayer
+    resp = sr1(startpacket, timeout = 1)
+
+
+
+
+
+
 def getSiteIP(siteName, rd):
     global nameDirectory
     global IPDirectory
@@ -28,12 +39,11 @@ def getSiteIP(siteName, rd):
         RNSquery = networkLayer/transportLayer/applicationLayer
 
         RNSresp = sr1(RNSquery, timeout=1)
-        ls(RNSresp)
+
         TLDList = []
         for i in range(RNSresp[DNS].arcount):
             if len(RNSresp[DNS].ar[i].rdata) < 15:
                 TLDList.append(RNSresp[DNS].ar[i].rdata)
-        print(TLDList)
         i = 0
         ANS = None
         while ANS == None and i < len(TLDList):
@@ -41,20 +51,23 @@ def getSiteIP(siteName, rd):
             i += 1
 
             transportLayer = UDP(dport=53, sport=56980)
-            applicationLayer = DNS(id=random.randint(0, 10000), rd=1, qd=DNSQR(qname=siteName, qtype= 'A'))
+            applicationLayer = DNS(id=random.randint(0, 10000), rd=1, qd=DNSQR(qname=siteName, qtype= 'NS'))
 
             TLDquery = networkLayer/transportLayer/applicationLayer
 
             TLDresp = sr1(TLDquery, timeout=1)
-            ls(TLDresp)
 
-            if ANS != None:
+            if TLDresp[DNS].ar != None:
                 ANS = TLDresp[DNS].ar[0].rdata
 
-        i = 0
-        while len(ANS) > 15:
-            ANS = TLDresp[DNS].ar[i].rdata
-            i += 1
+
+        if ANS == None:
+            ANS = TLDresp[DNS].ns[0].rdata
+        else:
+            i = 0
+            while len(ANS) > 15:
+                ANS = TLDresp[DNS].ar[i].rdata
+                i += 1
 
         networkLayer = IP(dst=ANS)
         transportLayer = UDP(dport=53, sport=56980)
@@ -63,7 +76,6 @@ def getSiteIP(siteName, rd):
         ANSquery = networkLayer/transportLayer/applicationLayer
 
         ANSresp = sr1(ANSquery, timeout=1)
-        ls(ANSresp)
         siteIP = ANSresp[DNS].an.rdata
 
         #voeg de domain name en overeenkomstige IP toe aan de name en IP directories.
@@ -84,13 +96,17 @@ def main():
     count = 0
     hostIP = get_if_addr(conf.iface)
     #zolang de dns server runt blijf loopen
+    print("starting DNS resolver")
     while(running):
         count += 1
         # start de sniffer
         t.start()
+        if count == 1:
+            startup()
         t.join()
-
         #loop daar alle gecapturde packets
+        if len(results) > 0:
+            print(results[0].summary())
         for packet in results:
             if packet[IP].dst == hostIP and packet[DNS].qr == 0:
                 print("generating response", packet[IP].src)
