@@ -2,7 +2,7 @@ from scapy.all import *
 import random
 nameDirectory = []
 IPDirectory = []
-DNSBACKUP = '10.99.6.1'
+ROOTNAMESERVER = '198.41.0.4'
 
 def getSiteIP(siteName, rd):
     global nameDirectory
@@ -17,33 +17,54 @@ def getSiteIP(siteName, rd):
             siteIP = IPDirectory[i]
             found = True
 
-            #kijk of de client recursie wil
-            if rd == 1:
-                #indien ja stuur een dns query naar de backup server
-                networkLayer = IP(dst=DNSBACKUP)
-                transportLayer = UDP(dport=53, sport=56980)
-                applicationLayer = DNS(id=random.randint(0, 10000), rd=1, qd=DNSQR(qname=siteName, qtype= 'A'))
-
-                DNSQuery = networkLayer/transportLayer/applicationLayer
-
-                DNSrespone = sr1(DNSQuery, timeout=1)
-
-                #vergelijk of de query overeenkomt met de opgeslagen waarde indien nee vervang de opgeslagen waarde
-                if siteIP != DNSrespone[DNS].an.rdata:
-                    siteIP = DNSrespone[DNS].an.rdata
-                    IPDirectory[i] = siteIP
 
     #indien de domain name niet gevonden werd: query de backup server
     if not(found):
-        networkLayer = IP(dst=DNSBACKUP)
+        TLDList = []
+        networkLayer = IP(dst=ROOTNAMESERVER)
         transportLayer = UDP(dport=53, sport=56980)
         applicationLayer = DNS(id=random.randint(0, 10000), rd=1, qd=DNSQR(qname=siteName, qtype= 'A'))
 
-        DNSQuery = networkLayer/transportLayer/applicationLayer
+        RNSquery = networkLayer/transportLayer/applicationLayer
 
-        DNSrespone = sr1(DNSQuery, timeout=1)
+        RNSresp = sr1(RNSquery, timeout=1)
+        ls(RNSresp)
+        TLDList = []
+        for i in range(RNSresp[DNS].arcount):
+            if len(RNSresp[DNS].ar[i].rdata) < 15:
+                TLDList.append(RNSresp[DNS].ar[i].rdata)
+        print(TLDList)
+        i = 0
+        ANS = None
+        while ANS == None and i < len(TLDList):
+            networkLayer = IP(dst=TLDList[i])
+            i += 1
 
-        siteIP = DNSrespone[DNS].an.rdata
+            transportLayer = UDP(dport=53, sport=56980)
+            applicationLayer = DNS(id=random.randint(0, 10000), rd=1, qd=DNSQR(qname=siteName, qtype= 'A'))
+
+            TLDquery = networkLayer/transportLayer/applicationLayer
+
+            TLDresp = sr1(TLDquery, timeout=1)
+            ls(TLDresp)
+
+            if ANS != None:
+                ANS = TLDresp[DNS].ar[0].rdata
+
+        i = 0
+        while len(ANS) > 15:
+            ANS = TLDresp[DNS].ar[i].rdata
+            i += 1
+
+        networkLayer = IP(dst=ANS)
+        transportLayer = UDP(dport=53, sport=56980)
+        applicationLayer = DNS(id=random.randint(0, 10000), rd=1, qd=DNSQR(qname=siteName, qtype= 'A'))
+
+        ANSquery = networkLayer/transportLayer/applicationLayer
+
+        ANSresp = sr1(ANSquery, timeout=1)
+        ls(ANSresp)
+        siteIP = ANSresp[DNS].an.rdata
 
         #voeg de domain name en overeenkomstige IP toe aan de name en IP directories.
         nameDirectory.append(siteName)
@@ -99,6 +120,8 @@ def main():
 
                 DNSAnswer = networkLayer/transportLayer/applicationLayer
                 dnsResponse = sr1(DNSAnswer, timeout=1)
+
+                print("Domain name:", siteName, "IP:", siteIP)
 
         #stop de sniffer en update de results
         results = t.results
