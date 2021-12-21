@@ -1,0 +1,5 @@
+# piDNS
+
+Dependecies:
+- Scapy
+- random
